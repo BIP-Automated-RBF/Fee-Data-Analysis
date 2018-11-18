@@ -1,0 +1,46 @@
+Research Q's
+
+At what 'position' in the mempool/block should the user aim to be - how likely is a user to be kicked out of the block at given positions, when other users are using the same system? Is there a statistically optimal place?
+
+Should the aimed at position take into account the average time left until a block is created, or a 'reactionary' approach be used and never try to predict and only react to being moved ou the desired position?
+
+How to determine which block to aim at being in? The minimum fee to a given block could be much higher than the one after it - the mempool can only give so much info. If the mempool allows reasonable predictability then it might be possible to estimate which block is best and tell the user what blocks the tx is likely to be in.
+
+How do the fees for txns in the mempool build up over time? How consistent are they? Can this be used to estimate things?
+
+How often to bump a tx?
+
+How much extra fees to pay each time? Just enough to bump to the desired position?
+
+How long will it take for a new tx to reach a miner and be included in a block?
+Could test this by sending many RBFs and seeing which got into a block and when it was sent - many times and averaged.
+Could estimate how long the next block will take and how long it'll take to get to a miner and use that to estimate what position in line to go for.
+
+Use 95% confidence interval
+
+How many miners discriminate against RBF?
+
+Should always spend utxo's that allow you to spend the max fee that you're willing to pay so you don't have to add utxo's to inputs
+
+
+
+Concerns
+
+
+Txns/s is variable
+
+Miners could inject high fee txns into the mempool to increase what others pay - though they would have to be valid txns to do so and would therefore pay themselves.
+
+How many times can an RBF be sent without being banned?
+
+If you're giving the pre-computed txns to someone else, they'll have to hold it - for a fee?
+Unless you can broadcast all the txns and miners can be set to not ignore the lower fee ones if they can't get them because they're timelocked
+
+Miners could agree to ignore RBF fees that are low if they know that the same txns with higher fees will come later - essentially forming a cartel.
+
+If many people are trying to get into the same position, then every time each person bumps and removes others, they will then get bumped - the race to the top will consist of many network broadcasts, potentially greatly increasing the bandwidth cost for the whole network.
+Could signal as a node when you connect to peers that you only want to hear about blocks to save bandwidth
+
+If a block isn't full and people are trying to bump themselves to a position of 70%, then whoever gets kicked from 70% to 71% will also automatically bump their fees, leading to a race to the top to everyone's max fees. This can be avoided if people only bump their fees if the block is actually full.
+
+If this scheme is used by only some wallets, or the implementation is different between different wallets, then privacy could be compromised by adverrsaries being able to know what kind of wallet a particular tx originator uses.
