@@ -17,6 +17,7 @@ import time
 import configparser
 import csv
 import os
+import threading
 
 t0 = time.time()
 
@@ -27,96 +28,127 @@ nodeCredentials = conf["config"]["nodeCredentials"]
 node = AuthServiceProxy(nodeCredentials)
 # Block from the start of 2017 is 446000
 # Block height to start parsing from
-startBlockHeight = 525000
+startBlockHeight = 500000
 # The last block to be parsed since it's before the end of our price data time-wise. The last block WON'T be included
-latestBlockHeight = 549500
+latestBlockHeight = 525000
 
 priceDataFileName = "bitcoin-historical-data/coinbaseUSD_10-min_data_2016-12-31_to_2018-11-11.csv"
-feeDataFileName = "bitcoin-historical-data/txFeeDataFromBlock{}To{}.csv".format(startBlockHeight, latestBlockHeight)
 
-# Open priceData file
-with open(priceDataFileName) as priceData:
 
-    # Need to check if the feeData file exists so the header can be written if not
-    if not os.path.isfile(feeDataFileName):
-        with open(feeDataFileName, 'w') as feeData:
-            feeDataWriter = csv.writer(feeData)
-            feeDataWriter.writerow(["height", "time", "btcPrice", "txid", "txVSize", "btcSpent", "usdSpent", "feeInBtc",
-                                    "feeInUSD", "btcPerVByte", "USDPerVByte"])
-    # If it does exist, read the last block height that was written to it
-    else:
-        with open(feeDataFileName) as feeData:
-            feeDataReader = csv.reader(feeData, delimiter=',')
-            # Skip to the 2nd row where the price data actually starts
-            next(feeDataReader)
-            next(feeDataReader)
-            for row in feeDataReader:
-                if int(row[0]) >= startBlockHeight: startBlockHeight = int(row[0])+1
+class myThread (threading.Thread):
+    def __init__(self, threadID, filename, startBlock, endBlock):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.filename = filename
+        self.startBlockHeight = startBlock
+        self.latestBlockHeight = endBlock
 
-    # Start editing the data
-    with open(feeDataFileName, 'a') as feeData:
+    def run(self):
+        print("Starting {}".format(self.threadID))
+        feeDataFileName = self.filename
 
-        priceDataReader = csv.reader(priceData, delimiter=',')
-        feeDataWriter = csv.writer(feeData)
+        # Open priceData file
+        with open(priceDataFileName) as priceData:
 
-        # Skip to the 2nd row where the price data actually starts
-        row = next(priceDataReader)
-        row = next(priceDataReader)
+            # Need to check if the feeData file exists so the header can be written if not
+            if not os.path.isfile(feeDataFileName):
+                with open(feeDataFileName, 'w') as feeData:
+                    feeDataWriter = csv.writer(feeData)
+                    feeDataWriter.writerow(["height", "time", "btcPrice", "txid", "txVSize", "btcSpent", "usdSpent", "feeInBtc",
+                                            "feeInUSD", "btcPerVByte", "USDPerVByte"])
+            # If it does exist, read the last block height that was written to it
+            else:
+                with open(feeDataFileName) as feeData:
+                    feeDataReader = csv.reader(feeData, delimiter=',')
+                    # Skip to the 2nd row where the price data actually starts
+                    next(feeDataReader)
+                    next(feeDataReader)
+                    for row in feeDataReader:
+                        if int(row[0]) >= self.startBlockHeight: self.startBlockHeight = int(row[0])+1
 
-        # Iterate through blocks
-        for height in range(startBlockHeight, latestBlockHeight):
-            print('Height: ', height)
-            # Get block data from the node
-            block = node.getblock(node.getblockhash(height))
-            # This will be a 2d list - a list where each element is a list of data for an individual tx
-            txsData = []
+            # Start editing the data
+            with open(feeDataFileName, 'a') as feeData:
 
-            # Find the price data that was the latest before the block was mined
-            while not (block['time'] >= (int(row[0])) and block['time'] <= int(row[0])+600):
+                priceDataReader = csv.reader(priceData, delimiter=',')
+                feeDataWriter = csv.writer(feeData)
+
+                # Skip to the 2nd row where the price data actually starts
                 row = next(priceDataReader)
-            btcPrice = float(row[7])
+                row = next(priceDataReader)
 
-            # Iterate through every tx in a block. Don't want to include the coinbase tx when iterating through
-            # each tx in a block
-            for txid in block['tx'][1:]:
-                totalIn = 0
-                totalOut = 0
+                # Iterate through blocks
+                for height in range(self.startBlockHeight, self.latestBlockHeight):
+                    print('Height: {}'.format(height))
+                    # Get block data from the node
+                    block = node.getblock(node.getblockhash(height))
+                    # This will be a 2d list - a list where each element is a list of data for an individual tx
+                    txsData = []
 
-                # Get data of a tx
-                tx = node.decoderawtransaction(node.getrawtransaction(txid), True)
+                    # Find the price data that was the latest before the block was mined
+                    while not (block['time'] >= (int(row[0])) and block['time'] <= int(row[0])+600):
+                        row = next(priceDataReader)
+                    btcPrice = float(row[7])
 
-                try:
-                    # Need the total Bitcoins being used as inputs
-                    for input in tx['vin']:
-                        # Need to know which index of an output of this tx is being spent
-                        index = input['vout']
-                        # The node only refers to the txid of the output that's being spent in this input, so need to fetch
-                        # that first
-                        txo = node.decoderawtransaction(node.getrawtransaction(input['txid']), True)
-                        # Need to get the actual output of this tx being spent to get the amount
-                        totalIn += txo['vout'][index]['value']
+                    # Iterate through every tx in a block. Don't want to include the coinbase tx when iterating through
+                    # each tx in a block
+                    for txid in block['tx'][1:]:
+                        totalIn = 0
+                        totalOut = 0
 
-                    # Need the total Bitcoins being spent as outputs
-                    for output in tx['vout']:
-                        totalOut += output['value']
+                        # Get data of a tx
+                        tx = node.decoderawtransaction(node.getrawtransaction(txid), True)
 
-                    totalIn = float(totalIn)
-                    totalOut = float(totalOut)
-                    feeBtc = totalIn - totalOut
+                        try:
+                            # Need the total Bitcoins being used as inputs
+                            for input in tx['vin']:
+                                # Need to know which index of an output of this tx is being spent
+                                index = input['vout']
+                                # The node only refers to the txid of the output that's being spent in this input, so need to fetch
+                                # that first
+                                txo = node.decoderawtransaction(node.getrawtransaction(input['txid']), True)
+                                # Need to get the actual output of this tx being spent to get the amount
+                                totalIn += txo['vout'][index]['value']
 
-                    # Get a list of tx data in this block so they can be sorted by the fee/vByte
-                    txsData.append([height, block['time'], btcPrice, txid, tx['vsize'], totalOut, totalOut*btcPrice, feeBtc,
-                                    feeBtc*btcPrice, feeBtc/tx['vsize'], feeBtc*btcPrice/(tx['vsize'])])
-                except Exception as e:
-                    print(e)
-                    print(txid)
-                    print(input)
+                            # Need the total Bitcoins being spent as outputs
+                            for output in tx['vout']:
+                                totalOut += output['value']
 
-            # Sort every tx in a block by the fee/vByte from smallest to largest
-            sortedTxsData = sorted(txsData, key=lambda x: x[9])
-            # Write the sorted data into the csv file
-            for feeInfo in sortedTxsData:
-                feeDataWriter.writerow(feeInfo)
-            t1 = time.time()-t0
-            print("Time elapsed: {} s        {} mins          {} hours          {} days".format(t1, t1/60, t1/3600, t1/86400))
+                            totalIn = float(totalIn)
+                            totalOut = float(totalOut)
+                            feeBtc = totalIn - totalOut
 
+                            # Get a list of tx data in this block so they can be sorted by the fee/vByte
+                            txsData.append([height, block['time'], btcPrice, txid, tx['vsize'], totalOut, totalOut*btcPrice, feeBtc,
+                                            feeBtc*btcPrice, feeBtc/tx['vsize'], feeBtc*btcPrice/(tx['vsize'])])
+                        except Exception as e:
+                            print(e)
+                            print(txid)
+                            print(input)
+
+                    # Sort every tx in a block by the fee/vByte from smallest to largest
+                    sortedTxsData = sorted(txsData, key=lambda x: x[9])
+                    # Write the sorted data into the csv file
+                    for feeInfo in sortedTxsData:
+                        feeDataWriter.writerow(feeInfo)
+                    t1 = time.time()-t0
+                    print("Time elapsed: {} s        {} mins          {} hours          {} days".format(t1, t1/60, t1/3600, t1/86400))
+
+        print("Exiting {}".format(self.threadID))
+
+
+if __name__ == "__main__":
+    numthreads = 5
+    numblocks = latestBlockHeight - startBlockHeight
+    threadlist = []
+    begin = startBlockHeight
+    blocksperthread = numblocks / numthreads
+    for i in range(numthreads):
+        feeDataFileName = "bitcoin-historical-data/txFeeDataFromBlock{}To{}.csv".format(begin, begin + blocksperthread)
+        thread = myThread(i, feeDataFileName, begin, begin + blocksperthread)
+        thread.start()
+        threadlist.append(thread)
+        begin += blocksperthread
+
+    for t in threadlist:
+        t.join()
+    print("Exiting Main Thread")
