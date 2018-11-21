@@ -79,25 +79,51 @@ for height in range(startBlockHeight, latestBlockHeight):
     totalIn = 0
     totalOut = 0
 
+    fees = []
+
     rawtransactions = []
     decoded_raw_transactions = []
-    txns = []
-    txos = []
 
+    inputCount = float(0)
+    rpcLookupCount = float(0)
     # Need the total Bitcoins being used as inputs
     try:
         #get the raw transaction for each tx in this block
         rawtransactions = node.batch_([ [ "getrawtransaction", str(txid)] for txid in block['tx'][1:]])
         decoded_raw_transactions = node.batch_([ [ "decoderawtransaction", tx] for tx in rawtransactions])
-        for t in decoded_raw_transactions:
-            print(t)
+        txsData = []
+        totalIn = float(0)
+        totalOut = float(0)
+        rpcLookupCount += 1
+        for tx in decoded_raw_transactions:
+	    for input in tx['vin']:
+		inputCount += 1
+		rpcLookupCount += 1
+		# Need to know which index of an output of this tx is being spent
+		index = input['vout']
+		# The node only refers to the txid of the output that's being spent in this input, so need to fetch
+		# that first
+		txo = node.decoderawtransaction(node.getrawtransaction(input['txid']), True)
+		# Need to get the actual output of this tx being spent to get the amount
+		totalIn += float(txo['vout'][index]['value'])
+
+	    # Need the total Bitcoins being spent as outputs
+	    for output in tx['vout']:
+		totalOut += float(output['value'])
+
+
+	    totalIn = float(totalIn)
+	    totalOut = float(totalOut)
+	    feeBtc = totalIn - totalOut
+            fees.append(feeBtc)
+	    # Get a list of tx data in this block so they can be sorted by the fee/vByte
+	    '''txsData.append([height, block['time'], btcPrice, txid, tx['vsize'], totalOut, totalOut*btcPrice, feeBtc,\
+				feeBtc*btcPrice, feeBtc/tx['vsize'], feeBtc*btcPrice/(tx['vsize'])])'''
         '''for t in decoded_raw_transactions:
             txns.append(node.batch_([ ["getrawtransaction", str(t['vin'][i]['txid'])] for i in range(len(t['vin']))]))'''
         #raw_input_transactions = node.batch_([ [ "decoderawtransaction", t] for t in txns ])
     except Exception as e:
         print(e)
-        print(rawtransactions)
-        print(decoded_raw_transactions)
 
     #print(len(raw_input_transactions))
     #print(len(rawtransactions))
