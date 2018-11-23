@@ -35,6 +35,7 @@ node = AuthServiceProxy(nodeCredentials)
 startBlockHeight = 525000
 # The last block to be parsed since it's before the end of our price data time-wise. The last block WON'T be included
 latestBlockHeight = 549500
+blocksParsed = 0
 
 priceDataFileName = "bitcoin-historical-data/coinbaseUSD_10-min_data_2016-12-31_to_2018-11-11.csv"
 feeDataFileName = "bitcoin-historical-data/txFeeDataFromBlock{}To{}.csv".format(startBlockHeight, latestBlockHeight)
@@ -66,6 +67,7 @@ with open(feeDataFileName, 'a') as feeData:
 
     # Iterate through blocks
     for height in range(startBlockHeight, latestBlockHeight):
+        blocksParsed += 1
         newBlock = time.time()
         inputCount = 0
         rpcLookupCount = 0
@@ -145,6 +147,8 @@ with open(feeDataFileName, 'a') as feeData:
                     t6, t6/60, t6/3600, t6/86400))
                 print("""Time to:   open priceData = {},      find correct price = {},      look up fee data = {},
                         sort fee data = {}      write fee data = {},    total for block = {},   number of inputs = {},
-                        time per input = {},    rpcLookupCount = {}, time per rpc lookup = {}""".format(
+                        time per input = {},    rpcLookupCount = {}, time per rpc lookup = {},
+                        blocksParsed = {},  average parse time per block = {}s""".format(
                         t2-newBlock, t3-t2, t4-t3, t5-t4, time.time()-t5, time.time()-newBlock, inputCount,
-                        (time.time()-newBlock)/inputCount, rpcLookupCount, (time.time()-newBlock)/rpcLookupCount))
+                        (time.time()-newBlock)/inputCount, rpcLookupCount, (time.time()-newBlock)/rpcLookupCount),
+                        blocksParsed, t6/blocksParsed)
